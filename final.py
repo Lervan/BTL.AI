@@ -3,26 +3,6 @@ import mediapipe as mp
 import time 
 import math
 import numpy as np
-import pickle
-import warnings
-
-warnings.filterwarnings("ignore")
-
-try:
-    with open('model_ban_tim.pkl', 'rb') as f:
-        model = pickle.load(f)
-    print("Đã load model AI thành công!")
-except FileNotFoundError:
-    model = None
-    print("CẢNH BÁO: Không tìm thấy file 'model_ban_tim.pkl'. Chức năng bắn tim sẽ tắt.")
-
-try:
-    with open('model_mong_rong.pkl', 'rb') as f:
-        model1 = pickle.load(f)
-    print("Đã load model AI thành công!")
-except FileNotFoundError:
-    model1 = None
-    print("CẢNH BÁO: Không tìm thấy file 'model_mong_rong.pkl'. Chức năng bắn tim sẽ tắt.")
 
 mp_hands = mp.solutions.hands
 mp_pose = mp.solutions.pose
@@ -31,60 +11,19 @@ mp_drawing = mp.solutions.drawing_utils
 hands_detector = mp_hands.Hands(max_num_hands = 2, min_detection_confidence = 0.7, min_tracking_confidence = 0.7)
 pose_dectector = mp_pose.Pose(min_detection_confidence = 0.7)
 
-count = 0
-direction = 0
-form = 0   
-
-def caculate_angle(a, b, c):
+def tinh_goc(a, b, c):
     a = np.array(a)
     b = np.array(b)
     c = np.array(c)
 
-    radians = np.arctan2(c[1] - b[1], c[0] - b[0]) - np.arctan2(a[1] - b[1], a[0] - b[0])
-    angle = np.abs(radians * 180.0 / np.pi)
+    radian = np.arctan2(c[1] - b[1], c[0] - b[0]) - np.arctan2(a[1] - b[1], a[0] - b[0])
+    angle = np.abs(radian * 180.0 / np.pi)
 
     if (angle > 180.0):
         angle = 360 - angle
     return angle
 
-def gio_ngon_tro(lm_list):
-    if not lm_list:
-        return False
-    
-    if lm_list[8][2] > lm_list[6][2]:
-        return False
-
-    for id in [12, 16, 20]:
-        if lm_list[id][2] < lm_list[id - 2][2]: 
-            return False
-
-    if lm_list[4][2] < lm_list[6][2]:
-        return False
-
-    return True
-
-def countFingers(hand_landmarks, hand_label):
-    fingers_status = [] 
-
-    thumb_tip_x = hand_landmarks.landmark[4].x
-    thumb_ip_x = hand_landmarks.landmark[3].x
-
-    if hand_label == "Right":
-        fingers_status.append(1 if thumb_tip_x < thumb_ip_x else 0)
-    else:
-        fingers_status.append(1 if thumb_tip_x > thumb_ip_x else 0)
-
-    finger_tips_ids = [8, 12, 16, 20]
-    
-    for tip_id in finger_tips_ids:
-        if hand_landmarks.landmark[tip_id].y < hand_landmarks.landmark[tip_id - 2].y:
-            fingers_status.append(1)
-        else:
-            fingers_status.append(0)
-            
-    return fingers_status, sum(fingers_status)
-
-def is_both_hands_up(landmarks):
+def do_hai_tay(landmarks):
     if not landmarks:
         return False
     
@@ -96,194 +35,235 @@ def is_both_hands_up(landmarks):
 
     return (tay_phai < vai_phai) and (tay_trai < vai_trai)
 
+def kiem_tra_ngon_cai(landmarks, label):
+    thumb_tip = landmarks[4]
+    thumb_ip = landmarks[3]
+
+    if label == "Right":
+        if thumb_tip.x > thumb_ip.x:
+            return True
+        else:
+            return False 
+    elif label == "Left":
+        if thumb_tip.x < thumb_ip.x:
+            return True 
+        else:
+            return False 
+            
+    return False
+
+def gio_ngon_tro(landmarks, label):
+    if landmarks[8].y > landmarks[6].y:
+        return False
+    if landmarks[12].y < landmarks[10].y: 
+        return False
+    if landmarks[16].y < landmarks[14].y: 
+        return False 
+    if landmarks[20].y < landmarks[18].y: 
+        return False
+    if kiem_tra_ngon_cai(landmarks, label) == 0:
+        return False
+    return True
+
+def dem_ngon_tay(landmarks, label):
+    trang_thai_ngon_tay = [] 
+    if (kiem_tra_ngon_cai(landmarks, label)):
+        trang_thai_ngon_tay.append(0)
+    else:    
+        trang_thai_ngon_tay.append(1)
+
+    toa_do_dau_ngon_tay = [8, 12, 16, 20]
+    
+    for dau_ngon_id in toa_do_dau_ngon_tay:
+        if landmarks[dau_ngon_id].y < landmarks[dau_ngon_id - 2].y:
+            trang_thai_ngon_tay.append(1)
+        else:
+            trang_thai_ngon_tay.append(0)
+            
+    return trang_thai_ngon_tay, sum(trang_thai_ngon_tay)
+
 def distance(a, b):
     return math.hypot(a.x - b.x, a.y - b.y)
 
-def recognize_gesture(landmarks, fnger_up_list, model = None, model1 = None):
-    if model is not None:
-        row = []
-        for lm in landmarks:
-            row.extend([lm.x, lm.y])
-        X = np.array([row])
-        try:
-            prediction = model.predict(X)[0]
-            if prediction == 1:
-                return "Ban Tim :3"
-        except Exception as e:
-            pass
+def nhan_dien_cu_chi(landmarks, list_ngon_dang_gio):
+    size_long_ban_tay = distance(landmarks[0], landmarks[9])
+    if (size_long_ban_tay == 0): 
+        size_long_ban_tay = 0.0000001
+    khoang_cach_cham_ncai_ntro = distance(landmarks[4], landmarks[8])
+    dang_cham = (khoang_cach_cham_ncai_ntro / size_long_ban_tay) < 0.2
+    ngon_giua_dong = landmarks[12].y > landmarks[9].y
+    ngon_ap_ut_dong = landmarks[16].y > landmarks[13].y
+    ngon_ut_dong = landmarks[20].y > landmarks[17].y
 
-    if model1 is not None:
-        row = []
-        for lm in landmarks: 
-            row.extend([lm.x, lm.y])
-        X = np.array([row])
-        try:
-            prediction = model1.predict(X)[0]
-            if prediction == 1:
-                return "Dragon Nail"
-        except Exception as e:
-            pass
+    if (dang_cham and ngon_giua_dong and ngon_ap_ut_dong and ngon_ut_dong):
+        return "Ban Tim <3"
 
-    d = math.hypot(landmarks[4].x - landmarks[8].x, landmarks[4].y - landmarks[8].y)
-    if d < 0.05: return "OK"
-    
-    if (finger_up_list == [0,1,0,0,1]):
+    if (dang_cham and (ngon_giua_dong == 0) and (ngon_ap_ut_dong == 0) and (ngon_ut_dong == 0)): 
+        return "OK"
+
+    if (list_ngon_dang_gio == [0,1,0,0,1]):
         return "ROCK"
     
-    if (finger_up_list == [1,0,0,0,0]):
-        return "Like"
+    if (list_ngon_dang_gio == [1,0,0,0,1]):
+        return "Smoke"
     
-    if (finger_up_list == [0,1,1,0,0]):
+    if (list_ngon_dang_gio == [0,1,1,0,0]):
         return "Say Hi"
     
-    if sum(finger_up_list) == 5:
-        return "FIVE"
+    if sum(list_ngon_dang_gio) == 0:
+        return "Nam Dam"
+
+    if sum(list_ngon_dang_gio) == 5:
+        return "FIVE (Xoe ban tay)"
     
-    if (finger_up_list == [0,0,1,0,0]):
+    if (list_ngon_dang_gio == [0,0,1,0,0]):
         return "WARNING!"     
     return "UNKNOWN"
-    
 
-cap = cv2.VideoCapture(0)
+def main():
+    cap = cv2.VideoCapture(0)
+    count = 0
+    direction = 0
+    # form = 0   
 
-current_mode = "HAND"
-start_time = 0
-holding = False
+    current_mode = "HAND"
+    start_time = 0
+    holding = False
 
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
 
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        break
+        frame = cv2.flip(frame, 1)
+        h, w, c = frame.shape
+        frame_lam_mo = cv2.GaussianBlur(frame, (5, 5), 0)
+        frame_rgb = cv2.cvtColor(frame_lam_mo, cv2.COLOR_BGR2RGB)
 
-    frame = cv2.flip(frame, 1)
-    h, w, c = frame.shape
-    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        count_time = 0
+        if current_mode == "HAND":
+            results = hands_detector.process(frame_rgb)
+            detected_gesture_switch = False
+            tong_2_ban_tay = 0
+            if results.multi_hand_landmarks and results.multi_handedness:
+                for hand_lms, hand_info in zip(results.multi_hand_landmarks, results.multi_handedness):
+                    mp_drawing.draw_landmarks(frame, hand_lms, mp_hands.HAND_CONNECTIONS)
 
-    count_time = 0
-    if current_mode == "HAND":
-        results = hands_detector.process(frame_rgb)
-        detected_gesture_switch = False
-        total_finger_count = 0
-        if results.multi_hand_landmarks and results.multi_handedness:
-            for hand_lms, hand_info in zip(results.multi_hand_landmarks, results.multi_handedness):
-                mp_drawing.draw_landmarks(frame, hand_lms, mp_hands.HAND_CONNECTIONS)
-                label = hand_info.classification[0].label
+                    label = hand_info.classification[0].label
 
-                finger_up_list, total_fingers = countFingers(hand_lms, label)
-                total_finger_count += total_fingers
+                    list_ngon_dang_gio, tong_ngon_1_ban_tay = dem_ngon_tay(hand_lms.landmark, label)
+                    tong_2_ban_tay += tong_ngon_1_ban_tay
 
-                gesture_name = recognize_gesture(hand_lms.landmark, finger_up_list, model, model1)
+                    ten_cu_chi = nhan_dien_cu_chi(hand_lms.landmark, list_ngon_dang_gio)
+
+                    if gio_ngon_tro(hand_lms.landmark, label):
+                        detected_gesture_switch = True
+
+                    co_tay_x = int(hand_lms.landmark[0].x * w)
+                    co_tay_y = int(hand_lms.landmark[0].y * h)
+                    
+                    cv2.putText(frame, f"{label} Hand", (co_tay_x - 40, co_tay_y + 20), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                    cv2.putText(frame, f"Fingers: {tong_ngon_1_ban_tay}", (co_tay_x - 40, co_tay_y + 40), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+                    cv2.putText(frame, f"{ten_cu_chi}", (co_tay_x - 40, co_tay_y - 20), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 255), 2)
+                cv2.putText(frame, f"Total Fingers: {tong_2_ban_tay}", (10, 100),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
+            thoi_gian_can = 5
+            if (detected_gesture_switch):
+                if not holding:
+                    bat_dau = time.time()
+                    holding = True
                 
-                lm_list = []
-                for id, lm in enumerate(hand_lms.landmark):
-                    lm_list.append([id, int(lm.x * w), int(lm.y * h)])
+                count_time = time.time() - bat_dau
 
-                if gio_ngon_tro(lm_list):
-                    detected_gesture_switch = True
+                cv2.putText(frame, f"Giu Ngon Tro: {int(count_time)}s/{thoi_gian_can}s", (10, 50), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
 
-                wrist_x = int(hand_lms.landmark[0].x * w)
-                wrist_y = int(hand_lms.landmark[0].y * h)
-                
-                cv2.putText(frame, f"{label} Hand", (wrist_x - 40, wrist_y + 20), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-                cv2.putText(frame, f"Fingers: {total_fingers}", (wrist_x - 40, wrist_y + 40), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-                cv2.putText(frame, f"{gesture_name}", (wrist_x - 40, wrist_y - 20), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 255), 2)
-            cv2.putText(frame, f"Total Fingers: {total_finger_count}", (10, 100),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-
-        thoi_gian_can = 5
-        if (detected_gesture_switch):
-            if not holding:
-                bat_dau = time.time()
-                holding = True
-            
-            count_time = time.time() - bat_dau
-
-            cv2.putText(frame, f"Giu Ngon Tro: {int(count_time)}s/{thoi_gian_can}s", (10, 50), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
-
-            if (count_time > thoi_gian_can):
-                current_mode = "POSE"
+                if (count_time > thoi_gian_can):
+                    current_mode = "POSE"
+                    holding = False
+                    bat_dau = 0
+                    print ("Chuyen sang che do POSE")
+            else:
                 holding = False
-                bat_dau = 0
-                print ("Chuyen sang che do POSE")
-        else:
-            holding = False
 
-    elif current_mode == "POSE":
-        results = pose_dectector.process(frame_rgb)
-        detected_gesture = False
+        elif current_mode == "POSE":
+            results = pose_dectector.process(frame_rgb)
+            detected_gesture = False
 
-        if (results.pose_landmarks):
-            mp_drawing.draw_landmarks(frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+            if (results.pose_landmarks):
+                mp_drawing.draw_landmarks(frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
 
-            if is_both_hands_up(results.pose_landmarks.landmark):
-                detected_gesture = True
+                if do_hai_tay(results.pose_landmarks.landmark):
+                    detected_gesture = True
 
-            landmarks = results.pose_landmarks.landmark
+                landmarks = results.pose_landmarks.landmark
 
-            vai = [landmarks[11].x, landmarks[11].y]
-            khuyu_tay = [landmarks[13].x, landmarks[13].y]
-            co_tay = [landmarks[15].x, landmarks[15].y]
+                vai = [landmarks[11].x, landmarks[11].y]
+                khuyu_tay = [landmarks[13].x, landmarks[13].y]
+                co_tay = [landmarks[15].x, landmarks[15].y]
 
-            angle = caculate_angle(vai, khuyu_tay, co_tay)
+                angle = tinh_goc(vai, khuyu_tay, co_tay)
 
-            h, w, c = frame.shape
-            cv2.putText(frame, str(int(angle)),
-                        (int(khuyu_tay[0] * w), int(khuyu_tay[1] * h)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (111,111,111), 2)
+                h, w, c = frame.shape
+                cv2.putText(frame, str(int(angle)),
+                            (int(khuyu_tay[0] * w), int(khuyu_tay[1] * h)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (111,111,111), 2)
 
-            per = np.interp(angle, (70, 160), (100, 0))
-            bar_x = w - 50
-            bar_y = np.interp(angle, (70, 160), (400 , 100))
+                per = np.interp(angle, (70, 160), (100, 0))
+                bar_x = w - 50
+                bar_y = np.interp(angle, (70, 160), (400 , 100))
 
-            if (per == 100):
-                if (direction == 0):
-                    direction = 1
+                if (per == 100):
+                    if (direction == 0):
+                        direction = 1
 
-            if (per == 0):
-                if (direction == 1):
-                    count += 1
-                    direction = 0
-            
-            cv2.rectangle(frame, (bar_x, 100), (bar_x+25, 400), (0, 255, 0), 2)
-            cv2.rectangle(frame, (bar_x, int(bar_y)), (bar_x+25, 400), (0, 255, 0), cv2.FILLED)
-            cv2.putText(frame, f'{int(per)}%', (bar_x-10, 80), cv2.FONT_HERSHEY_PLAIN, 1.5, (255, 0, 0), 2)        
-        
-            cv2.rectangle(frame, (0, h-100), (150, h), (0, 255, 0), cv2.FILLED)
-            cv2.putText(frame, str(int(count)), (30, h-20), cv2.FONT_HERSHEY_PLAIN, 5, (255, 0, 0), 5)
-
-
-        thoi_gian_can = 5
-        if detected_gesture:
-            if not holding:
-                start_time = time.time()
-                holding = True
-
-            count_time = time.time() - start_time
-
-
-            cv2.putText(frame, f"Gio 2 tay: {int(count_time)}s/{(thoi_gian_can)}s", (10, 50),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                if (per == 0):
+                    if (direction == 1):
+                        count += 1
+                        direction = 0
                 
-            if count_time > thoi_gian_can:
-                current_mode = "HAND"
-                holding = False
-                start_time = 0
-                print("Chuyen sang che do HAND")
-                count = 0 
-        else:
-            holding = False
-        
-    cv2.putText(frame, f"MODE : {current_mode}", (420, 50),
-                cv2.FONT_HERSHEY_SIMPLEX, 1, (0,244,0), 2)
-    
-    cv2.imshow("Smart", frame)
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+                cv2.rectangle(frame, (bar_x, 100), (bar_x+25, 400), (0, 255, 0), 2)
+                cv2.rectangle(frame, (bar_x, int(bar_y)), (bar_x+25, 400), (0, 255, 0), cv2.FILLED)
+                cv2.putText(frame, f'{int(per)}%', (bar_x-10, 80), cv2.FONT_HERSHEY_PLAIN, 1.5, (255, 0, 0), 2)        
+            
+                cv2.rectangle(frame, (0, h-100), (150, h), (0, 255, 0), cv2.FILLED)
+                cv2.putText(frame, str(int(count)), (30, h-20), cv2.FONT_HERSHEY_PLAIN, 5, (255, 0, 0), 5)
 
-cap.release()
-cv2.destroyAllWindows()
+
+            thoi_gian_can = 5
+            if detected_gesture:
+                if not holding:
+                    start_time = time.time()
+                    holding = True
+
+                count_time = time.time() - start_time
+
+
+                cv2.putText(frame, f"Gio 2 tay: {int(count_time)}s/{(thoi_gian_can)}s", (10, 50),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                    
+                if count_time > thoi_gian_can:
+                    current_mode = "HAND"
+                    holding = False
+                    start_time = 0
+                    print("Chuyen sang che do HAND")
+                    count = 0 
+            else:
+                holding = False
+            
+        cv2.putText(frame, f"MODE : {current_mode}", (420, 50),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0,244,0), 2)
+        
+        cv2.imshow("Smart", frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    main()
