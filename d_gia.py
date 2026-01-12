@@ -97,7 +97,6 @@ while True:
     cv2.putText(frame, f"Doc duoc: {nhan_hien_tai}", (180, 30), 
                 cv2.FONT_HERSHEY_SIMPLEX, 1, (99, 255, 199), 2)
 
-    y_offset = 20
     for idx, label in enumerate(Nhan_cu_chi):
         count = gesture_counts[label]
         color = (0, 255, 255) if count > 0 else (180, 180, 180)
