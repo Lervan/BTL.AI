@@ -9,10 +9,20 @@ from sklearn.metrics import confusion_matrix, accuracy_score
 import final 
 
 '''ĐIỀU KIỆN ĐÁNH GIÁ
+
+Đủ ánh sáng
 - Điều kiện phòng có ánh sáng ổn định
 - Khoảng cách với webcam từ 25 - 70cm
 - Được chụp từ nhiều vị trí trong khoảng webcam đoc được
 - Mỗi cử chỉ sẽ được thử 300 lần (Mỗi bên tay 150 lần)
+- Tập trung chính ở các góc độ đối diện lòng bàn tay (dễ đọc được các khớp ngón tay)
+- Hạn chế lật ngược bàn tay hoặc gập bàn tay
+
+Thiếu ánh sáng
+- Điều kiện phòng thiếu ánh sáng
+- Khoảng cách với web camsẽ gần hơn từ 25 - 70cm
+- Được chụp từ nhiều vị trí trong khoảng webcam đọc được
+- Mỗi cử chỉ sẽ được thử 300 lần (Mỗi bên tay 100 lần)
 - Tập trung chính ở các góc độ đối diện lòng bàn tay (dễ đọc được các khớp ngón tay)
 - Hạn chế lật ngược bàn tay hoặc gập bàn tay'''
 
@@ -102,12 +112,12 @@ while True:
         label_id = key - ord('0')
         label_name = Nhan_cu_chi[label_id]
         
-        #Logic đánh giá độ chính xác
+
         y_chinh_xac.append(label_name)
         y_du_doan.append(nhan_hien_tai)
         gesture_counts[label_name] += 1
         
-        #Logic lưu tọa độ vào CSV
+
         if toa_do_hien_tai:
             luu_vao_csv(label_id, toa_do_hien_tai)
             print(f">> Da luu toa do cho nhan {label_id} ({label_name}) vao file CSV")
